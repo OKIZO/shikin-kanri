@@ -143,8 +143,11 @@
   .toast.show { transform: translateX(-50%) translateY(0); }
   .scrollbar-hide::-webkit-scrollbar { display: none; }
   .editable-title-wrap { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 8px; }
-  .editable-title { font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 4px; color: var(--muted); text-transform: uppercase; background: none; border: none; border-bottom: 1px dashed var(--border); outline: none; text-align: center; width: 200px; padding: 2px 4px; }
-  .editable-title:focus { border-bottom-color: var(--accent3); color: var(--text); }
+  .editable-title { font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 4px; color: var(--text); text-transform: uppercase; background: none; border: none; outline: none; text-align: center; width: 200px; padding: 2px 4px; }
+  .editable-title:focus { color: var(--text); }
+  .update-badge { display: inline-block; font-family: 'Space Mono', monospace; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px; }
+  .update-badge.crypto { background: var(--accent); color: #0a0a0f; }
+  .update-badge.savings { background: var(--accent3); color: #0a0a0f; }
   .edit-icon { font-size: 11px; color: var(--muted); cursor: pointer; opacity: 0.5; }
 </style>
 </head>
@@ -185,9 +188,9 @@
 </div>
 <div class="tab-content active" id="tab-crypto">
   <div class="header">
-    <h1>仮想通貨入金管理</h1>
+    <h1>仮想通貨入金管理 <span id="cryptoYear" style="color:var(--accent)"></span></h1>
     <div class="total-amount crypto" id="totalAmount">¥0</div>
-    <div class="total-label">累計入金額</div>
+    <div class="total-label" style="margin-top:8px">累計入金額　<span id="cryptoUpdated"></span></div>
   </div>
   <div class="coins-grid" id="coinsGrid"></div>
   <div class="monthly-config">
@@ -220,11 +223,11 @@
 <div class="tab-content" id="tab-savings">
   <div class="header">
     <div class="editable-title-wrap">
-      <input class="editable-title" id="savingsTitle" value="KIDS SAVINGS" maxlength="24" oninput="saveSavingsTitle()">
+      <input class="editable-title" id="savingsTitle" value="KIDS SAVINGS" maxlength="24" oninput="saveSavingsTitle()"><span id="savingsYear" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--accent3);letter-spacing:2px;margin-left:4px;"></span>
       <span class="edit-icon" onclick="document.getElementById('savingsTitle').focus()">✎</span>
     </div>
     <div class="total-amount savings" id="savingsTotal">¥0</div>
-    <div class="total-label"><span id="savingsTitleLabel">の貯金額</span></div>
+    <div class="total-label" style="margin-top:8px"><span id="savingsTitleLabel">の貯金額</span>　<span id="savingsUpdated"></span></div>
   </div>
   <div class="savings-summary">
     <div class="summary-card papa"><div class="summary-card-label">パパ</div><div class="summary-card-amount" id="papaTotal">¥0</div></div>
@@ -355,6 +358,22 @@ function today(){const d=new Date();return `${d.getFullYear()}/${String(d.getMon
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 function cryptoTotal(){return COINS.reduce((s,c)=>s+cryptoState.totals[c],0);}
 function ratioTotal(){return COINS.reduce((s,c)=>s+(parseInt(cryptoState.ratios[c])||0),0);}
+function updateYears(){
+  const y=new Date().getFullYear();
+  document.getElementById('cryptoYear').textContent=y;
+  document.getElementById('savingsYear').textContent=y;
+}
+function fmtUpdated(dateStr){if(!dateStr)return '';const p=dateStr.split('/');return p[1]+'/'+p[2];}
+function renderCryptoUpdated(){
+  const d=cryptoState.lastUpdated||today();
+  if(!cryptoState.lastUpdated){cryptoState.lastUpdated=today();saveLS('cryptoTracker',cryptoState);}
+  document.getElementById('cryptoUpdated').innerHTML=`<span class="update-badge crypto">更新 ${fmtUpdated(d)}</span>`;
+}
+function renderSavingsUpdated(){
+  const d=savingsState.lastUpdated||today();
+  if(!savingsState.lastUpdated){savingsState.lastUpdated=today();saveLS('savingsTracker',savingsState);}
+  document.getElementById('savingsUpdated').innerHTML=`<span class="update-badge savings">更新 ${fmtUpdated(d)}</span>`;
+}
 function renderCrypto(){
   document.getElementById('totalAmount').textContent=fmt(cryptoTotal());
   const tot=cryptoTotal();
@@ -364,12 +383,13 @@ function renderCrypto(){
   document.getElementById('monthlyHint').textContent='合計 '+fmt(ratioTotal());
   document.getElementById('extraInputs').innerHTML=COINS.map(coin=>`<div class="extra-row"><span class="extra-coin-label" data-coin="${coin}">${coin}</span><input class="extra-input" id="extra_${coin}" type="number" placeholder="0" min="0" step="100"></div>`).join('');
   renderCryptoHistory();
+  renderCryptoUpdated();
   saveLS('cryptoTracker',cryptoState);
 }
 function updateConfigCheck(){const total=ratioTotal();const el=document.getElementById('configCheck');el.textContent='合計 '+fmt(total);el.className='config-total-check '+(total>0?'ok':'ng');}
 function updateRatio(coin,val){cryptoState.ratios[coin]=parseInt(val)||0;updateConfigCheck();document.getElementById('monthlyHint').textContent='合計 '+fmt(ratioTotal());saveLS('cryptoTracker',cryptoState);}
-function addMonthly(){const total=ratioTotal();if(total===0){showToast('入金額を設定してください');return;}const entry={date:today(),type:'月次',items:{},total};COINS.forEach(coin=>{const add=cryptoState.ratios[coin]||0;cryptoState.totals[coin]+=add;entry.items[coin]=add;});cryptoState.history.unshift(entry);renderCrypto();showToast('今月分 '+fmt(total)+' を入金しました');}
-function applyExtra(){const entry={date:today(),type:'臨時',items:{},total:0};let added=false;COINS.forEach(coin=>{const val=parseInt(document.getElementById('extra_'+coin)?.value)||0;if(val>0){cryptoState.totals[coin]+=val;entry.items[coin]=val;entry.total+=val;added=true;}});if(!added){showToast('金額を入力してください');return;}cryptoState.history.unshift(entry);renderCrypto();toggleExtra(true);showToast('臨時入金 '+fmt(entry.total)+' を追加しました');}
+function addMonthly(){const total=ratioTotal();if(total===0){showToast('入金額を設定してください');return;}const entry={date:today(),type:'月次',items:{},total};COINS.forEach(coin=>{const add=cryptoState.ratios[coin]||0;cryptoState.totals[coin]+=add;entry.items[coin]=add;});cryptoState.history.unshift(entry);cryptoState.lastUpdated=today();renderCrypto();showToast('今月分 '+fmt(total)+' を入金しました');}
+function applyExtra(){const entry={date:today(),type:'臨時',items:{},total:0};let added=false;COINS.forEach(coin=>{const val=parseInt(document.getElementById('extra_'+coin)?.value)||0;if(val>0){cryptoState.totals[coin]+=val;entry.items[coin]=val;entry.total+=val;added=true;}});if(!added){showToast('金額を入力してください');return;}cryptoState.history.unshift(entry);cryptoState.lastUpdated=today();renderCrypto();toggleExtra(true);showToast('臨時入金 '+fmt(entry.total)+' を追加しました');}
 function renderCryptoHistory(){const list=document.getElementById('historyList');if(!cryptoState.history.length){list.innerHTML='<div style="text-align:center;color:var(--muted);font-size:12px;padding:20px 0">履歴はありません</div>';return;}list.innerHTML=cryptoState.history.slice(0,30).map(h=>{const tags=COINS.filter(c=>h.items[c]>0).map(c=>`<span class="history-tag" data-coin="${c}">${c} ${fmt(h.items[c])}</span>`).join('');const tc=h.type==='月次'?'color:var(--accent)':' color:var(--accent2)';return `<div class="history-item"><div><div class="history-date">${h.date}</div><div class="history-type" style="${tc}">${h.type}</div></div><div style="text-align:right"><div class="history-coins">${tags}</div><div class="history-total">${fmt(h.total)}</div></div></div>`;}).join('');}
 function toggleExtra(forceClose){const toggle=document.getElementById('extraToggle'),body=document.getElementById('extraBody');const open=body.classList.contains('open');if(forceClose||open){body.classList.remove('open');toggle.classList.remove('open');}else{body.classList.add('open');toggle.classList.add('open');}}
 function showExport(){const box=document.getElementById('exportBox'),ta=document.getElementById('exportText');if(box.style.display!=='none'){box.style.display='none';return;}const lines=['仮想通貨　入金履歴','',`出力日　${today()}`,'',`合計　${Math.round(cryptoTotal()).toLocaleString('ja-JP')}`,'','入金'];COINS.forEach(c=>lines.push(`${c}     ${Math.round(cryptoState.totals[c]).toLocaleString('ja-JP')}`));if(cryptoState.history.length){lines.push('','--- 入金履歴 ---');cryptoState.history.forEach(h=>{const items=COINS.filter(c=>h.items[c]>0).map(c=>`${c} ${Math.round(h.items[c]).toLocaleString('ja-JP')}`).join('  ');lines.push(`${h.date}  [${h.type}]  ${items}  合計 ${Math.round(h.total).toLocaleString('ja-JP')}`);});}ta.value=lines.join('\n');box.style.display='block';}
@@ -384,13 +404,14 @@ function renderSavings(){
   const map={};savingsState.history.forEach(h=>{map[h.sender]=(map[h.sender]||0)+h.amount;});
   document.getElementById('senderBreakdown').innerHTML=Object.entries(map).sort((a,b)=>b[1]-a[1]).map(([name,amt])=>{const cls=name==='パパ'?'color:var(--accent2)':' color:var(--accent3)';return `<div class="breakdown-row"><span class="breakdown-name">${name}</span><span class="breakdown-amt" style="${cls}">${fmt(amt)}</span></div>`;}).join('');
   renderSavingsHistory();
+  renderSavingsUpdated();
   saveLS('savingsTracker',savingsState);
 }
 function renderSavingsHistory(){const list=document.getElementById('savingsHistoryList');const sorted=[...savingsState.history].sort((a,b)=>b.date.localeCompare(a.date));list.innerHTML=sorted.slice(0,50).map(h=>{const sc=h.isPapa?'papa':'other';const memo=h.memo?`<div class="savings-memo">${h.memo}</div>`:'';return `<div class="savings-history-item"><div><div class="history-date">${h.date}</div><span class="savings-sender ${sc}">${h.sender}</span>${memo}</div><div class="history-total savings">${fmt(h.amount)}</div></div>`;}).join('');}
 let selectedSender='パパ';
 function selectSender(btn){document.querySelectorAll('.sender-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');selectedSender=btn.dataset.sender;}
-function addSavingsMonthly(){savingsState.history.push({date:today(),amount:10000,sender:'パパ',memo:'月次',isPapa:true});renderSavings();showToast('パパの今月分 ¥10,000 を記録しました');}
-function applySavings(){const amt=parseInt(document.getElementById('s_amount').value)||0;if(amt<=0){showToast('金額を入力してください');return;}const memo=document.getElementById('s_memo').value.trim();savingsState.history.push({date:today(),amount:amt,sender:selectedSender,memo,isPapa:selectedSender==='パパ'});renderSavings();document.getElementById('s_amount').value='';document.getElementById('s_memo').value='';toggleSavingsForm(true);showToast(selectedSender+' '+fmt(amt)+' を記録しました');}
+function addSavingsMonthly(){savingsState.history.push({date:today(),amount:10000,sender:'パパ',memo:'月次',isPapa:true});savingsState.lastUpdated=today();renderSavings();showToast('パパの今月分 ¥10,000 を記録しました');}
+function applySavings(){const amt=parseInt(document.getElementById('s_amount').value)||0;if(amt<=0){showToast('金額を入力してください');return;}const memo=document.getElementById('s_memo').value.trim();savingsState.history.push({date:today(),amount:amt,sender:selectedSender,memo,isPapa:selectedSender==='パパ'});savingsState.lastUpdated=today();renderSavings();document.getElementById('s_amount').value='';document.getElementById('s_memo').value='';toggleSavingsForm(true);showToast(selectedSender+' '+fmt(amt)+' を記録しました');}
 function toggleSavingsForm(forceClose){const toggle=document.getElementById('savingsFormToggle'),body=document.getElementById('savingsFormBody');const open=body.classList.contains('open');if(forceClose||open){body.classList.remove('open');toggle.classList.remove('open');}else{body.classList.add('open');toggle.classList.add('open');}}
 function showSavingsExport(){const box=document.getElementById('savingsExportBox'),ta=document.getElementById('savingsExportText');if(box.style.display!=='none'){box.style.display='none';return;}const sorted=[...savingsState.history].sort((a,b)=>a.date.localeCompare(b.date));const title=document.getElementById('savingsTitle').value||'KIDS SAVINGS';const lines=[title+' 貯金記録','',`出力日　${today()}`,'',`合計　${Math.round(savingsGrandTotal()).toLocaleString('ja-JP')}円`,'',`パパ合計　　${Math.round(papaTotalAmt()).toLocaleString('ja-JP')}円`,`その他合計　${Math.round(otherTotalAmt()).toLocaleString('ja-JP')}円`,'','--- 入金履歴 ---'];sorted.forEach(h=>{const memo=h.memo?`　${h.memo}`:'';lines.push(`${h.date}  +${Math.round(h.amount).toLocaleString('ja-JP')}円　${h.sender}${memo}`);});ta.value=lines.join('\n');box.style.display='block';}
 function copySavingsExport(){const ta=document.getElementById('savingsExportText');navigator.clipboard.writeText(ta.value).then(()=>showToast('コピーしました')).catch(()=>{ta.select();document.execCommand('copy');showToast('コピーしました');});}
@@ -399,6 +420,7 @@ function loadSavingsTitle(){const saved=loadLS('savingsTitle');if(saved){documen
 renderCrypto();
 renderSavings();
 loadSavingsTitle();
+updateYears();
 </script>
 </body>
 </html>
